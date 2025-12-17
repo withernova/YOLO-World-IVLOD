@@ -2,6 +2,7 @@
 import copy
 import json
 import logging
+from pathlib import Path
 from typing import Callable, List, Union
 
 from mmengine.logging import print_log
@@ -119,4 +120,44 @@ class MultiModalMixedDataset(MultiModalDataset):
             data_info.update({'texts': self.class_texts})
         data_info['is_detection'] = 1 \
             if self.dataset_type == 'detection' else 0
+        return data_info
+
+
+@DATASETS.register_module()
+class MultiModalOWDataset(MultiModalDataset):
+    """Multi-modal Open-World dataset."""
+
+    def __init__(self,
+                 dataset: Union[BaseDataset, dict],
+                 class_text_path: str = None,
+                 test_mode: bool = True,
+                 pipeline: List[Union[dict, Callable]] = [],
+                 class_agnostic: bool = False,
+                 unknown_prompt: str = 'object',  # e.g. "object", "unknown", "thing"...
+                 lazy_init: bool = False) -> None:
+        super().__init__(dataset=dataset, test_mode=test_mode, pipeline=pipeline, lazy_init=lazy_init)
+
+        self.class_agnostic = class_agnostic
+
+        # if class_text_path is not None:
+        #     if Path(class_text_path).suffix == '.json':
+        #         self.class_texts = json.load(open(class_text_path, 'r'))
+        #     elif Path(class_text_path).suffix == '.txt':
+        #         with open(class_text_path, 'r') as f:
+        #            self.class_texts = [[x.strip()] for x in f.readlines()]
+        #     self.class_texts += [[unknown_prompt]]
+        # elif class_agnostic:
+        #     self.class_texts = [[unknown_prompt]]
+        # else:
+        #     self.class_texts = None
+
+    @force_full_init
+    def get_data_info(self, idx: int) -> dict:
+        """Get annotation by index."""
+        data_info = self.dataset.get_data_info(idx)
+        if self.class_agnostic:
+            for instance in data_info['instances']:
+                instance['bbox_label'] = 0
+        if self.class_texts is not None:
+            data_info.update({'texts': self.class_texts})
         return data_info

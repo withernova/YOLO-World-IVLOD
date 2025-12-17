@@ -264,11 +264,13 @@ class YOLOWorldHeadModule(YOLOv8HeadModule):
 
         if txt_masks is not None:
             txt_masks = txt_masks.view(b, -1, 1, 1).expand(-1, -1, h, w)
+            min_value = -1e4 
+            
             if self.training:
                 cls_logit = cls_logit * txt_masks
-                cls_logit[txt_masks == 0] = -10e6
+                cls_logit[txt_masks == 0] = min_value
             else:
-                cls_logit[txt_masks == 0] = -10e6
+                cls_logit[txt_masks == 0] = min_value
 
         bbox_dist_preds = reg_pred(img_feat)
         if self.reg_max > 1:
@@ -320,6 +322,8 @@ class RepYOLOWorldHeadModule(YOLOWorldHeadModule):
         b, _, h, w = img_feat.shape
         cls_embed = cls_pred(img_feat)
         cls_logit = cls_contrast(cls_embed)
+        
+        
         bbox_dist_preds = reg_pred(img_feat)
         if self.reg_max > 1:
             bbox_dist_preds = bbox_dist_preds.reshape(
@@ -343,27 +347,49 @@ class RepYOLOWorldHeadModule(YOLOWorldHeadModule):
         return multi_apply(self.forward_single, img_feats, self.cls_preds,
                            self.reg_preds, self.cls_contrasts)
 
-
+import torch
+from mmengine.structures import InstanceData  # 必须引入这个类
 @MODELS.register_module()
 class YOLOWorldHead(YOLOv8Head):
     """YOLO-World Head
     """
     def __init__(self, world_size=-1, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.world_size = world_size
+        self.world_size = world_size 
 
-    """YOLO World v8 head."""
-
-    def loss(self, img_feats: Tuple[Tensor], txt_feats: Tensor,
-             txt_masks: Tensor, batch_data_samples: Union[list, dict]) -> dict:
-        """Perform forward propagation and loss calculation of the detection
-        head on the features of the upstream network."""
-
+    def loss(self, img_feats: tuple, txt_feats: torch.Tensor,
+             txt_masks: torch.Tensor, batch_data_samples: dict) -> dict:
+        """
+        Perform forward propagation and loss calculation.
+        """
         outs = self(img_feats, txt_feats, txt_masks)
-        # Fast version
-        loss_inputs = outs + (batch_data_samples['bboxes_labels'],
-                              batch_data_samples['img_metas'])
-        losses = self.loss_by_feat(*loss_inputs)
+        cls_scores, bbox_preds, bbox_dist_preds = outs
+
+        batch_img_metas = batch_data_samples['img_metas']
+        
+        bboxes_labels = batch_data_samples['bboxes_labels'] 
+        
+        batch_gt_instances = []
+        
+        for i in range(len(batch_img_metas)):
+            mask = bboxes_labels[:, 0] == i
+            img_gt = bboxes_labels[mask] 
+            
+            gt_instance = InstanceData()
+        
+            gt_instance.labels = img_gt[:, 1].long()
+            gt_instance.bboxes = img_gt[:, 2:]
+            
+            batch_gt_instances.append(gt_instance)
+
+        losses = self.loss_by_feat(
+            cls_scores=cls_scores,
+            bbox_preds=bbox_preds,
+            bbox_dist_preds=bbox_dist_preds,
+            batch_text_masks=txt_masks,
+            batch_gt_instances=batch_gt_instances,
+            batch_img_metas=batch_img_metas
+        )
 
         return losses
 

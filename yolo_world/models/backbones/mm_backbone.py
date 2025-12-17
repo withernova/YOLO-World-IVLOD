@@ -113,7 +113,10 @@ class HuggingCLIPLanguageBackbone(BaseModule):
         return txt_feats, text_mask
 
     def _freeze_modules(self):
-
+        self.model.eval()
+        for param in self.model.parameters():
+            param.requires_grad = False
+        
         if len(self.frozen_modules) == 0:
             # not freeze
             return
