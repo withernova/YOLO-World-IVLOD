@@ -60,8 +60,7 @@ class OWODDetector(YOLODetector):
             if cls in class_to_embedding:
                 emb_list.append(class_to_embedding[cls])
             else:
-                # 简单的随机初始化 Fallback，防止 crash
-                emb_list.append(torch.randn(prompt_dim))
+                emb_list.append(torch.randn(self.n_ctx, prompt_dim)) 
         
         known_embeddings = torch.stack(emb_list)
         
@@ -112,7 +111,7 @@ class OWODDetector(YOLODetector):
         )
             
     def _update_test(self, ordered_classes):
-        """保持原有逻辑"""
+        
         external_checkpoint = torch.load(self.mode, map_location='cpu')
         
         if 'class_to_embedding' in external_checkpoint:
@@ -130,9 +129,14 @@ class OWODDetector(YOLODetector):
                         new_emb = torch.tensor(new_emb)
                     new_emb = new_emb.to(self.embeddings.device).float()
                     
+                    if new_emb.dim() == 1 and self.n_ctx == 1:
+                        new_emb = new_emb.unsqueeze(0) # [dim] -> [1, dim]
+
                     if new_emb.shape == self.embeddings[idx].shape:
                         self.embeddings[idx].copy_(new_emb)
                         update_count += 1
+                    else:
+                        print(f"⚠️ Shape mismatch for {cls_name}: {new_emb.shape} vs {self.embeddings[idx].shape}")
         
     def loss(self, batch_inputs: Tensor, batch_data_samples: SampleList) -> Union[dict, list]:
         """Calculate losses."""

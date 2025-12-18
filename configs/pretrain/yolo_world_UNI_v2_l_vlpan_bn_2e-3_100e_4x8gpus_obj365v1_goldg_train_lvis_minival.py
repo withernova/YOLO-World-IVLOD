@@ -5,12 +5,15 @@ _base_ = [
 
 custom_imports = dict(imports=['yolo_world'], allow_failed_imports=True)
 
-EXP_NAME = "第十七次测试-尝试迁移YOLO-World"
+EXP_NAME = "DEBUG-SAVE"
+#"第十八次测试-jyhsetting-YOLOworld"
+#"第十八次测试-jyhsetting-YOLOworld"
+#"第十七次测试-尝试迁移YOLO-World"
 WORK_DIR = "/root/data-fs/YOLOWorld"
 
 num_classes = _base_.PREV_INTRODUCED_CLS + _base_.CUR_INTRODUCED_CLS 
 num_training_classes = _base_.PREV_INTRODUCED_CLS + _base_.CUR_INTRODUCED_CLS
-max_epochs = 120
+max_epochs = 100
 close_mosaic_epochs = 2
 save_epoch_intervals = 5
 val_interval = 20
@@ -20,7 +23,7 @@ text_channels = 512
 neck_embed_channels = [128, 256, _base_.last_stage_out_channels // 2]
 neck_num_heads = [4, 8, _base_.last_stage_out_channels // 2 // 32]
 
-base_lr = 2e-3 
+base_lr = 3e-3 
 weight_decay = 0.05 / 2
 train_batch_size_per_gpu = 16
 
@@ -46,10 +49,10 @@ model = dict(
     task_id=_base_.owod_task,
     task_metadata_path=_base_.META_PATH,
     all_class_embeddings_path=CKPT_RUNNING,
-    mode = CKPT_FINAL if _base_.owod_dataset == 'ZCOCO' else 'train',
     
     # 使用 YOLO-World 的预处理器
     data_preprocessor=dict(type='YOLOv5DetDataPreprocessor'),
+    mode = CKPT_FINAL if _base_.owod_dataset == 'ZCOCO' else 'train',
     
     backbone=dict(
         _delete_=True,
@@ -150,18 +153,18 @@ custom_hooks = [
     dict(type='mmdet.PipelineSwitchHook',
          switch_epoch=max_epochs - close_mosaic_epochs,
          switch_pipeline=_base_.train_pipeline_stage2),
-    # dict(
-    #     type='TensorBoardLossHook',
-    #     task_id=EXP_NAME,
-    #     log_interval=10
-    # ),
-    # dict(
-    #     type='OWODMetricHook',
-    #     json_path=f'{WORK_DIR}/{EXP_NAME}/metrics_summary.json',
-    #     task_id=_base_.owod_task,
-    #     metric_key='standard_eval/mAP', 
-    #     save_best=True
-    # )
+    dict(
+        type='TensorBoardLossHook',
+        task_id=EXP_NAME,
+        log_interval=10
+    ),
+    dict(
+        type='OWODMetricHook',
+        json_path=f'{WORK_DIR}/{EXP_NAME}/metrics_summary.json',
+        task_id=_base_.owod_task,
+        metric_key='standard_eval/mAP', 
+        save_best=True
+    )
 ]
 
 train_cfg = dict(

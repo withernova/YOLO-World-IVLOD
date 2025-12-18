@@ -64,8 +64,8 @@ def get_latest_best_ckpt(work_dir):
     latest_best = ckpts[-1]
     print(f"🟩 Found best checkpoint: {osp.basename(latest_best)} (epoch={extract_epoch_num(latest_best)})")
     return latest_best
-
-def run_dataset(dataset, config, load_from, args):
+import shlex
+def run_dataset(dataset, config, load_from, args,abs_running_path):
     stem = Path(config).stem
     task_num = len(owod_settings[dataset]['task_list'])
     prev_work_dir = ''
@@ -77,7 +77,7 @@ def run_dataset(dataset, config, load_from, args):
             work_dir += f"_{args.suffix}"
 
         command = (f'DATASET={dataset} TASK={task} THRESHOLD={args.threshold} SAVE={args.save} CUDA_VISIBLE_DEVICES=0,1,2 '
-                   f'./tools/dist_train_owod.sh {config} 3 --amp --work-dir {work_dir}')
+                   f'./tools/dist_train_owod.sh {config} 3 --amp --work-dir {work_dir} --cfg-options model.all_class_embeddings_path={shlex.quote(abs_running_path)}')
 
         if task > 1:
             if not prev_work_dir:
@@ -110,9 +110,16 @@ def run_dataset(dataset, config, load_from, args):
 if __name__ == '__main__':
     args = parse_args()
     cfg = Config.fromfile(args.config)
-    shutil.copy2(cfg.CKPT_PATH, cfg.CKPT_RUNNING)
-    # Run all tasks for the dataset
-    run_dataset(args.dataset, args.config, args.ckpt, args)
-    
-    shutil.copy2(cfg.CKPT_RUNNING, cfg.CKPT_FINAL)
-    
+
+    abs_ckpt_path = str(Path(cfg.CKPT_PATH).expanduser().resolve())
+    abs_ckpt_running = str(Path(cfg.CKPT_RUNNING).expanduser().resolve())
+    abs_ckpt_final = str(Path(cfg.CKPT_FINAL).expanduser().resolve())
+
+    Path(abs_ckpt_running).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(abs_ckpt_path, abs_ckpt_running)
+
+    # run_dataset should accept abs_running_path and pass it into command as cfg-option
+    run_dataset(args.dataset, args.config, args.ckpt, args, abs_ckpt_running)
+
+    shutil.copy2(abs_ckpt_running, abs_ckpt_final)
+        
