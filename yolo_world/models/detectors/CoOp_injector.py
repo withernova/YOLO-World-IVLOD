@@ -21,7 +21,7 @@ class CLIPEmbeddingHook:
         learned_embedding = self.cur_embedding.to(dtype=output.dtype, device=output.device)
         
         if learned_embedding.dim() == 2:
-            learned_embedding = learned_embedding.unsqueeze(1) # 消融可能需要升维
+            learned_embedding = learned_embedding.unsqueeze(0) 
             
         modified_output = output.clone()
         modified_output[:, 1 : 1 + self.n_ctx, :] = learned_embedding

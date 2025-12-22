@@ -4,8 +4,12 @@ _base_ = [
 ]
 
 custom_imports = dict(imports=['yolo_world'], allow_failed_imports=True)
+task_id=_base_.owod_task,
 
-EXP_NAME = "DEBUG-SAVE"
+EXP_NAME = "第二十次测试-ivlod"
+#"第十九次测试-jyhsetting-解决wd"
+#"DEBUG-ONE"
+#"DEBUG-SAVE"
 #"第十八次测试-jyhsetting-YOLOworld"
 #"第十八次测试-jyhsetting-YOLOworld"
 #"第十七次测试-尝试迁移YOLO-World"
@@ -13,21 +17,20 @@ WORK_DIR = "/root/data-fs/YOLOWorld"
 
 num_classes = _base_.PREV_INTRODUCED_CLS + _base_.CUR_INTRODUCED_CLS 
 num_training_classes = _base_.PREV_INTRODUCED_CLS + _base_.CUR_INTRODUCED_CLS
-max_epochs = 100
+max_epochs = 120
 close_mosaic_epochs = 2
 save_epoch_intervals = 5
 val_interval = 20
 val_interval_stage2 = 20
-
 text_channels = 512
 neck_embed_channels = [128, 256, _base_.last_stage_out_channels // 2]
 neck_num_heads = [4, 8, _base_.last_stage_out_channels // 2 // 32]
 
-base_lr = 3e-3 
+base_lr = 2e-3 
 weight_decay = 0.05 / 2
 train_batch_size_per_gpu = 16
 
-ISCOOP = True
+ISCOOP = False
 CKPT_PATH = f'embeddings/uniow-w/{_base_.owod_dataset}_class_Co_embeddings.pth' if ISCOOP else f'embeddings/uniow-w/{_base_.owod_dataset}_class_embeddings.pth'
 CKPT_RUNNING = 'embeddings/uniow-w/running_class_embeddings.pth'
 CKPT_FINAL = f'{WORK_DIR}/{EXP_NAME}/final.pth'
@@ -49,10 +52,10 @@ model = dict(
     task_id=_base_.owod_task,
     task_metadata_path=_base_.META_PATH,
     all_class_embeddings_path=CKPT_RUNNING,
-    
+    n_ctx=16,
     # 使用 YOLO-World 的预处理器
     data_preprocessor=dict(type='YOLOv5DetDataPreprocessor'),
-    mode = CKPT_FINAL if _base_.owod_dataset == 'ZCOCO' else 'train',
+    mode = CKPT_FINAL ,#if _base_.owod_dataset == 'ZCOCO' else 'train',
     
     backbone=dict(
         _delete_=True,

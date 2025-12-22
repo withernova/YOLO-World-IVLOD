@@ -10,7 +10,7 @@ from mmengine.logging import print_log
 from mmengine.model import is_model_wrapper
 from mmengine.runner import Runner
 from mmengine.runner.checkpoint import load_state_dict
-
+import shutil
 from mmyolo.registry import RUNNERS
 from mmyolo.utils import is_metainfo_lower
 import debugpy
@@ -197,6 +197,9 @@ def main():
     else:
         unwrapped_model = model
     unwrapped_model.update_class_embeddings_dict()
+    pos = cfg.CKPT_FINAL.rfind('.')
+    result = cfg.CKPT_FINAL[:pos] + str(cfg.task_id[0]) + cfg.CKPT_FINAL[pos:]
+    shutil.copy2(cfg.CKPT_RUNNING, result)
 
 if __name__ == '__main__':
     main()

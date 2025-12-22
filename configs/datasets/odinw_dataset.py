@@ -15,14 +15,14 @@ owod_settings = {
         "task_list": [0, 10, 17, 23],
         "test_image_set": "test",
     },
-    "ODinW13" : {
-        "task_list" : [0,5,12,13,14,16,17,35,36,39,42,43,44,44],
-        "test_image_set": "test",
-    },
     # "ODinW13" : {
-    #     "task_list" : [0,5,7,1,1,2,1,20,1,3,5,1,1,2],
+    #     "task_list" : [0,5,12,13,14,16,17,35,36,39,42,43,44,44],
     #     "test_image_set": "test",
     # },
+    "ODinW13" : {
+        "task_list" : [0,5,7,1,1,2,1,20,1,3,5,1,1,2],
+        "test_image_set": "test",
+    },
     "ZCOCO" :{
         "task_list" : [0,80],
         "test_image_set" : "test_all"

@@ -53,7 +53,7 @@ def extract_feats(model, dataset=None, task_metadata_path=None, save_path='embed
     class_to_embedding = {}
     
     for cls_name in all_classes:
-        feat = model.backbone.forward_text([[cls_name]]).squeeze(0).detach().cpu()  
+        feat = model.backbone.forward_text([cls_name])[0].squeeze(0).detach().cpu()  
         class_to_embedding[cls_name] = feat.squeeze(0) 
     
     if dataset is None:
@@ -91,7 +91,7 @@ def extract_feats_Co(model, dataset=None, task_metadata_path=None, save_path='em
 
     for cls_name in all_classes:
         if init_method == 'text_based':
-            raw_feat = model.backbone.forward_text([[cls_name]]).squeeze(0).detach().cpu() 
+            raw_feat = model.backbone.forward_text([cls_name])[0].squeeze(0).detach().cpu() 
             
             if raw_feat.dim() == 1:
                 embeddings = raw_feat.unsqueeze(0).repeat(n_ctx, 1) 
@@ -268,8 +268,8 @@ if __name__ == "__main__":
 
         # extract features
         #extract_wildcard_feats(model, wildcard=args.wildcard, save_path=save_path)
-        #extract_feats(model, dataset='ODinW13',task_metadata_path="/root/data-tmp/odinw13/ODinW13_task_metadata.json", save_path=save_path)
-        extract_feats_Co(model, dataset='ODinW13',task_metadata_path="/root/data-tmp/odinw13/ODinW13_task_metadata.json", save_path=save_path)
+        extract_feats(model, dataset='ZCOCO',task_metadata_path="/root/data-tmp/odinw13/ZCOCO_task_metadata.json", save_path=save_path)
+        #extract_feats_Co(model, dataset='ODinW13',task_metadata_path="/root/data-tmp/odinw13/ODinW13_task_metadata.json", save_path=save_path)
         
        # for i in range(1, 14):
             

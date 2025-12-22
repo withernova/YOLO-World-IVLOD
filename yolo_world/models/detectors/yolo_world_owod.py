@@ -26,6 +26,7 @@ class OWODDetector(YOLODetector):
                  all_class_embeddings_path: str = '',
                  task_id: int = 1,
                  mode: str = 'train',
+                 n_ctx=16,
                  **kwargs) -> None:
         self.mode = mode
         self.mm_neck = mm_neck
@@ -33,6 +34,7 @@ class OWODDetector(YOLODetector):
         self.freeze_prompt = freeze_prompt
         self.use_mlp_adapter = use_mlp_adapter
         self.task_id = task_id
+        self.n_ctx = n_ctx
         
         super().__init__(*args, **kwargs)
 
@@ -45,7 +47,6 @@ class OWODDetector(YOLODetector):
             checkpoint = torch.load(all_class_embeddings_path, map_location='cpu')
             class_to_embedding = checkpoint['class_to_embedding'] 
         else:
-            # Fallback for init or first task if file missing
             class_to_embedding = {} 
         
         task_key = f"t{task_id}"
@@ -55,6 +56,11 @@ class OWODDetector(YOLODetector):
         prev_classes = [cls for cls in known_classes if cls not in cur_known_classes]
         ordered_classes = prev_classes + cur_known_classes
         
+        self.num_prev_classes = len(prev_classes)
+        self.num_cur_classes = len(cur_known_classes)
+        self.num_known_classes = len(ordered_classes)
+        self.num_training_classes = self.num_known_classes
+        
         emb_list = []
         for cls in ordered_classes:
             if cls in class_to_embedding:
@@ -63,39 +69,23 @@ class OWODDetector(YOLODetector):
                 emb_list.append(torch.randn(self.n_ctx, prompt_dim)) 
         
         known_embeddings = torch.stack(emb_list)
-        
-        self.embeddings = nn.Parameter(known_embeddings.float())
+
+        if self.num_prev_classes > 0:
+            self.prev_embeddings = nn.Parameter(known_embeddings[:self.num_prev_classes].float())
+            self.prev_embeddings.requires_grad = False 
+        else:
+            self.register_parameter('prev_embeddings', None)
+        self.cur_embeddings = nn.Parameter(known_embeddings[self.num_prev_classes:].float())
+        self.cur_embeddings.requires_grad = True
 
         if mode != 'train' and os.path.exists(mode):
             print(f"🔄 [OWODDetector] Mode is '{mode}', loading embeddings from file...")
             self._update_test(ordered_classes=ordered_classes)
         
-        self.num_prev_classes = len(prev_classes)
-        self.num_cur_classes = len(cur_known_classes)
-        self.num_known_classes = len(ordered_classes)  # prev + cur
-        
-        self.num_training_classes = self.num_known_classes
-        self.num_test_classes = self.num_training_classes
-        
-        self.num_total_embeddings = known_embeddings.shape[0]
-        
         self.ordered_classes = ordered_classes
         self.cur_known_classes = cur_known_classes
         self.prev_classes = prev_classes
         
-        # --- 保持原有的梯度 Mask 逻辑 ---
-        self._grad_mask = torch.zeros(self.num_total_embeddings, dtype=torch.bool)[:,None, None]
-
-        if len(self.embeddings.shape) == 2:
-             self._grad_mask = torch.zeros(self.num_total_embeddings, dtype=torch.bool)[:, None]
-
-        cur_start_idx = self.num_prev_classes
-        cur_end_idx = self.num_prev_classes + self.num_cur_classes
-        self._grad_mask[cur_start_idx:cur_end_idx] = True
-        
-        self.embeddings.requires_grad = True
-        self.embeddings.register_hook(lambda grad: grad * self._grad_mask.to(grad.device))
-
         if use_mlp_adapter:
             self.adapter = nn.Sequential(
                 nn.Linear(prompt_dim, prompt_dim * 2),
@@ -105,13 +95,18 @@ class OWODDetector(YOLODetector):
         else:
             self.adapter = None
             
-        # Hook 注入
         self.hook = CLIPEmbeddingHook(
             clip_model=self.backbone.text_model,
+            n_ctx=self.n_ctx
         )
+
+    @property
+    def embeddings(self):
+        if self.prev_embeddings is not None:
+            return torch.cat([self.prev_embeddings, self.cur_embeddings], dim=0)
+        return self.cur_embeddings
             
     def _update_test(self, ordered_classes):
-        
         external_checkpoint = torch.load(self.mode, map_location='cpu')
         
         if 'class_to_embedding' in external_checkpoint:
@@ -119,24 +114,27 @@ class OWODDetector(YOLODetector):
         elif isinstance(external_checkpoint, dict):
             external_dict = external_checkpoint
 
-        update_count = 0
+        # 获取完整的临时 tensor 用于更新
+        full_embeddings = self.embeddings.clone()
+
         with torch.no_grad():
             for idx, cls_name in enumerate(ordered_classes):
                 if cls_name in external_dict:
                     new_emb = external_dict[cls_name]
-                    
                     if not isinstance(new_emb, torch.Tensor):
                         new_emb = torch.tensor(new_emb)
-                    new_emb = new_emb.to(self.embeddings.device).float()
+                    new_emb = new_emb.to(full_embeddings.device).float()
                     
-                    if new_emb.dim() == 1 and self.n_ctx == 1:
-                        new_emb = new_emb.unsqueeze(0) # [dim] -> [1, dim]
+                    if new_emb.dim() == 1:
+                        new_emb = new_emb.unsqueeze(0)
 
-                    if new_emb.shape == self.embeddings[idx].shape:
-                        self.embeddings[idx].copy_(new_emb)
-                        update_count += 1
-                    else:
-                        print(f"⚠️ Shape mismatch for {cls_name}: {new_emb.shape} vs {self.embeddings[idx].shape}")
+                    if new_emb.shape == full_embeddings[idx].shape:
+                        full_embeddings[idx].copy_(new_emb)
+
+        # 将更新后的值写回 Parameter
+        if self.prev_embeddings is not None:
+            self.prev_embeddings.data.copy_(full_embeddings[:self.num_prev_classes])
+        self.cur_embeddings.data.copy_(full_embeddings[self.num_prev_classes:])
         
     def loss(self, batch_inputs: Tensor, batch_data_samples: SampleList) -> Union[dict, list]:
         """Calculate losses."""
@@ -153,8 +151,6 @@ class OWODDetector(YOLODetector):
         """Predict results."""
         img_feats, txt_feats = self.extract_feat(batch_inputs, batch_data_samples)
 
-        # 动态设置类别数，基于当前的 txt_feats
-        # txt_feats shape: (B, Num_Classes, Dim)
         self.bbox_head.num_classes = txt_feats.shape[1]
         batch_size, num_classes, _ = txt_feats.shape
         txt_masks = txt_feats.new_ones((batch_size, num_classes), dtype=torch.long)
@@ -177,28 +173,29 @@ class OWODDetector(YOLODetector):
     def extract_feat(self, batch_inputs: Tensor, 
                      batch_data_samples: SampleList) -> Tuple[Tuple[Tensor], Tensor]:
         """Extract features."""
-        B = batch_inputs.shape[0]
-        cur_embeddings = self.embeddings[:self.num_training_classes] # n_ctx个可训练的embedding 
-        self.hook.set_embedding(cur_embeddings)
+        # 这里使用 property self.embeddings 自动获取拼接后的 Tensor
+        # 此时 self.embeddings 包含了 prev (frozen) + cur (trainable)
+        full_embeddings = self.embeddings 
+        
+        # 注入 Hook
+        self.hook.set_embedding(full_embeddings)
+        
         img_feats, _ = self.backbone(batch_inputs, None)
         class_names = self.ordered_classes[:self.num_training_classes]
-        #class_names = ["a"] * self.num_training_classes
+
         with self.hook:
             txt_feats = self.backbone.forward_text([class_names])[0]
-            #txt_feats = self.backbone.forward_text([" "])
-            
-            
-        #txt_feats = self.embeddings[:self.num_training_classes]
         
+        if txt_feats.dim() == 2:
+            txt_feats = txt_feats.unsqueeze(0)
+            
         if txt_feats.shape[0] == 1:
             txt_feats = txt_feats.repeat(img_feats[0].shape[0], 1, 1)
-        
+            
         if self.adapter is not None:
             txt_feats = self.adapter(txt_feats) + txt_feats
             txt_feats = nn.functional.normalize(txt_feats, dim=-1, p=2)
         
-        #txt_feats = txt_feats.repeat(img_feats[0].shape[0], 1, 1)
-
         if self.with_neck:
             if self.mm_neck:
                 img_feats = self.neck(img_feats, txt_feats)
@@ -207,15 +204,13 @@ class OWODDetector(YOLODetector):
         
         return img_feats, txt_feats
 
-
     def update_class_embeddings_dict(self):
         if dist.is_initialized() and dist.get_rank() != 0:
             dist.barrier()  
             return
 
-        cur_start_idx = self.num_prev_classes
-        cur_end_idx = cur_start_idx + self.num_cur_classes
-        updated_cur_embeddings = self.embeddings[cur_start_idx:cur_end_idx].detach().cpu()
+        # 直接使用 cur_embeddings，无需切片
+        updated_cur_embeddings = self.cur_embeddings.detach().cpu()
 
         checkpoint = torch.load(self.all_class_embeddings_path, map_location='cpu')
         class_to_embedding = checkpoint['class_to_embedding']
@@ -232,9 +227,8 @@ class OWODDetector(YOLODetector):
             dist.barrier()
 
     def get_cur_embeddings(self):
-        cur_start_idx = self.num_prev_classes
-        cur_end_idx = self.num_prev_classes + self.num_cur_classes
-        return self.embeddings[cur_start_idx:cur_end_idx].detach().cpu()
+        # 直接返回 cur_embeddings
+        return self.cur_embeddings.detach().cpu()
         
     def get_cls_names(self):
         return self.cur_known_classes
@@ -246,25 +240,32 @@ class OWODDetector(YOLODetector):
         return self.ordered_classes
 
     def get_cls_embedding_by_name(self, cls_name):
+        # 需要从拼接后的 embeddings 中查找
+        full_emb = self.embeddings
         if cls_name in self.ordered_classes:
             idx = self.ordered_classes.index(cls_name)
-            return self.embeddings[idx].detach()
+            return full_emb[idx].detach()
         return None
 
     def compute_gradient_conflict(self, loss_dict):
+        # 注意：这里只计算 cur_embeddings 的梯度冲突，因为 prev 没有梯度
         gradients = {}
         for class_name, loss in loss_dict.items():
-            if self.embeddings.grad is not None:
-                self.embeddings.grad.zero_()
+            if self.cur_embeddings.grad is not None:
+                self.cur_embeddings.grad.zero_()
             
             loss.backward(retain_graph=True)
             
-            if self.embeddings.grad is not None:
-                cur_start_idx = self.num_prev_classes
-                cur_end_idx = self.num_prev_classes + self.num_cur_classes
-                grad_vector = self.embeddings.grad[cur_start_idx:cur_end_idx].flatten().clone()
-                gradients[class_name] = grad_vector
+            if self.cur_embeddings.grad is not None:
+                # 假设 class_name 属于当前任务，找到它在 cur_embeddings 中的相对索引
+                if class_name in self.cur_known_classes:
+                    rel_idx = self.cur_known_classes.index(class_name)
+                    grad_vector = self.cur_embeddings.grad[rel_idx].flatten().clone()
+                    gradients[class_name] = grad_vector
         
+        if not gradients:
+            return np.zeros((0, 0)), []
+
         n_classes = len(gradients)
         similarity_matrix = torch.zeros((n_classes, n_classes))
         class_list = list(gradients.keys())
@@ -281,11 +282,9 @@ class OWODDetector(YOLODetector):
         return similarity_matrix.cpu().numpy(), class_list
 
     def get_embedding_stats(self):
-        cur_start_idx = self.num_prev_classes
-        cur_end_idx = self.num_prev_classes + self.num_cur_classes
-        
-        cur_embeddings = self.embeddings[cur_start_idx:cur_end_idx]
-        prev_embeddings = self.embeddings[:self.num_prev_classes] if self.num_prev_classes > 0 else None
+        # 直接使用分开的变量
+        cur_embeddings = self.cur_embeddings
+        prev_embeddings = self.prev_embeddings
         
         stats = {
             'cur_norm_mean': cur_embeddings.norm(dim=-1).mean().item(),
@@ -306,25 +305,20 @@ class OWODDetector(YOLODetector):
         return stats
     
     def get_cur_embeddings_grad(self):
-        if self.embeddings.grad is None:
+        if self.cur_embeddings.grad is None:
             return None
-        cur_start_idx = self.num_prev_classes
-        cur_end_idx = self.num_prev_classes + self.num_cur_classes
-        return self.embeddings.grad[cur_start_idx:cur_end_idx].detach().cpu()
+        return self.cur_embeddings.grad.detach().cpu()
 
     def get_prev_embeddings(self):
-        if self.num_prev_classes == 0:
+        if self.prev_embeddings is None:
             return None
-        return self.embeddings[:self.num_prev_classes].detach().cpu()
+        return self.prev_embeddings.detach().cpu()
 
     def get_all_embeddings(self):
-        return self.embeddings[:self.num_known_classes].detach().cpu()
+        return self.embeddings.detach().cpu()
 
     def get_per_class_grad_norms(self):
-        if self.embeddings.grad is None:
+        if self.cur_embeddings.grad is None:
             return None
-        cur_start_idx = self.num_prev_classes
-        cur_end_idx = self.num_prev_classes + self.num_cur_classes
-        cur_grad = self.embeddings.grad[cur_start_idx:cur_end_idx]
-        per_class_norms = torch.norm(cur_grad, dim=-1)
+        per_class_norms = torch.norm(self.cur_embeddings.grad, dim=-1)
         return per_class_norms.detach().cpu()

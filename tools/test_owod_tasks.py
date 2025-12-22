@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 from mmengine.config import Config
 
-
+import shlex
 owod_settings = {
     # 4 tasks
     "MOWODB": {
@@ -55,19 +55,19 @@ def run_command(command):
     return return_code
 
 
-def eval_dataset(dataset, config, ckpt, args):
+def eval_dataset(dataset, config, ckpt, args,abs_running_path):
     image_set = owod_settings[dataset]['test_image_set']
     task_num = len(owod_settings[dataset]['task_list'])
     cfg = Config.fromfile(config)
 
-    for task in range(13, task_num):
+    for task in range(1, task_num):
         stem = Path(config).stem
-        work_dir = f'{cfg.WORK_DIR}/{stem}_{dataset.lower()}_train_task{task}'
+        work_dir = f'{cfg.WORK_DIR}/{stem}_{dataset.lower()}_test_task{task}'
         # ckpt_path = osp.join(ckpt.format(stem, dataset.lower(), task), "best*.pth")
         # checkpoint = sorted(glob.glob(ckpt_path))[-1]
 
         command = (f"DATASET={dataset} TASK={task} THRESHOLD={args.threshold} SAVE={args.save} "
-                   f"./tools/dist_test.sh {config} {ckpt} 1 --work-dir {work_dir} --json-prefix {work_dir}/test_results/result")
+                   f"./tools/dist_test.sh {config} {ckpt} 1 --work-dir {work_dir} --json-prefix {work_dir}/test_results/result --cfg-options model.all_class_embeddings_path={shlex.quote(abs_running_path)}")
 
         if args.save:
             with open('eval_outputs.txt', 'a') as f:
@@ -83,6 +83,9 @@ import shutil
 if __name__ == '__main__':
     args = parse_args()
     cfg = Config.fromfile(args.config)
-    shutil.copy2(cfg.CKPT_PATH, cfg.CKPT_RUNNING)
+    abs_ckpt_path = str(Path(cfg.CKPT_PATH).expanduser().resolve())
+    abs_ckpt_running = str(Path(cfg.CKPT_RUNNING).expanduser().resolve())
+    Path(abs_ckpt_running).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(abs_ckpt_path, abs_ckpt_running)
     
-    eval_dataset(args.dataset, args.config, args.ckpt, args)
+    eval_dataset(args.dataset, args.config, args.ckpt, args,abs_ckpt_running)
