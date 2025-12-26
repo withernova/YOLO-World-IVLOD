@@ -268,8 +268,8 @@ if __name__ == "__main__":
 
         # extract features
         #extract_wildcard_feats(model, wildcard=args.wildcard, save_path=save_path)
-        extract_feats(model, dataset='ZCOCO',task_metadata_path="/root/data-tmp/odinw13/ZCOCO_task_metadata.json", save_path=save_path)
-        #extract_feats_Co(model, dataset='ODinW13',task_metadata_path="/root/data-tmp/odinw13/ODinW13_task_metadata.json", save_path=save_path)
+        #extract_feats(model, dataset='ZCOCO',task_metadata_path="/root/data-tmp/odinw13/ZCOCO_task_metadata.json", save_path=save_path)
+        extract_feats_Co(model, dataset='ODinW13',task_metadata_path="/root/data-tmp/odinw13/ODinW13_task_metadata.json", save_path=save_path)
         
        # for i in range(1, 14):
             

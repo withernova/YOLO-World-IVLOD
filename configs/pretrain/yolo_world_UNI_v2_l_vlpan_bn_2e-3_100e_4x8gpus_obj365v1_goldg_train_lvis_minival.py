@@ -1,12 +1,13 @@
 _base_ = [
-    '../../third_party/mmyolo/configs/yolov8/yolov8_l_syncbn_fast_8xb16-500e_coco.py', # 建议基座切换回 v8 以匹配 YOLO-World
+    '../../third_party/mmyolo/configs/yolov8/yolov8_x_syncbn_fast_8xb16-500e_coco.py', # 建议基座切换回 v8 以匹配 YOLO-World
     '../datasets/odinw_dataset.py'
 ]
 
 custom_imports = dict(imports=['yolo_world'], allow_failed_imports=True)
 task_id=_base_.owod_task,
 
-EXP_NAME = "第二十次测试-ivlod"
+EXP_NAME = "DEBUG:回归L"
+#"第二十二次测试-强大的x"
 #"第十九次测试-jyhsetting-解决wd"
 #"DEBUG-ONE"
 #"DEBUG-SAVE"
@@ -35,7 +36,7 @@ CKPT_PATH = f'embeddings/uniow-w/{_base_.owod_dataset}_class_Co_embeddings.pth' 
 CKPT_RUNNING = 'embeddings/uniow-w/running_class_embeddings.pth'
 CKPT_FINAL = f'{WORK_DIR}/{EXP_NAME}/final.pth'
 
-load_from = 'pretrained/l_stage1-7d280586.pth' 
+load_from = 'pretrained/x_stage1-62b674ad.pth' 
 
 # trainable (1), frozen (0)
 embedding_mask = ([0] * _base_.PREV_INTRODUCED_CLS +    # previous classes

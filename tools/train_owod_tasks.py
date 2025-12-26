@@ -71,7 +71,7 @@ def run_dataset(dataset, config, load_from, args,abs_running_path):
     prev_work_dir = ''
     cfg = Config.fromfile(args.config)
 
-    for task in range(args.start, task_num):
+    for task in range(args.start+8, task_num):
         work_dir = f'{cfg.WORK_DIR}/{stem}_{dataset.lower()}_train_task{task}'
         if args.suffix:
             work_dir += f"_{args.suffix}"

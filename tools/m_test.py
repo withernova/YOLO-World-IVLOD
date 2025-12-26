@@ -12,10 +12,10 @@ from mmyolo.registry import RUNNERS
 from mmyolo.utils import is_metainfo_lower
 import debugpy
 
-print("[b.py] Waiting for debugger to attach on port 5678 ...")
-debugpy.listen(("0.0.0.0", 7475))
-debugpy.wait_for_client()
-print("[b.py] Debugger attached!")
+# print("[b.py] Waiting for debugger to attach on port 5678 ...")
+# debugpy.listen(("0.0.0.0", 7475))
+# debugpy.wait_for_client()
+# print("[b.py] Debugger attached!")
 
 # TODO: support fuse_conv_bn
 def parse_args():

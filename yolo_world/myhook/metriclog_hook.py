@@ -19,7 +19,7 @@ class OWODMetricHook(Hook):
                  metric_key='owod/CK',
                  task_id=1,
                  save_best=True,
-                 save_embeddings=True): 
+                 save_embeddings=False): 
         self.task_id = task_id
         self.json_path = json_path
         self.metric_key = metric_key
@@ -49,9 +49,9 @@ class OWODMetricHook(Hook):
 
         save_data = {
             'epoch': epoch,
-            'cur_embeddings': cur_embeddings.cpu().numpy(),
+            #'cur_embeddings': cur_embeddings.cpu().numpy(),
             'cur_classes': cur_classes,
-            'prev_embeddings': prev_embeddings.cpu().numpy() if prev_embeddings is not None else None,
+            #'prev_embeddings': prev_embeddings.cpu().numpy() if prev_embeddings is not None else None,
             'prev_classes': prev_classes,
         }
 
